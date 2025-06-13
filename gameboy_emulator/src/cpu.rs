@@ -13,13 +13,13 @@ pub struct Cpu {
     pub f: u8,
 }
 
-struct Gameboy {
-    cpu: Cpu,
-    memory: [u8; 65536],
+pub struct Gameboy {
+    pub cpu: Cpu,
+    pub memory: [u8; 65536],
 }
 
 impl Gameboy {
-    fn step(&mut self) {
+    pub fn step(&mut self) {
         // attain opcode
         let opcode = self.fetch_byte();
         // match and execute
@@ -53,7 +53,6 @@ impl Cpu {
 
     fn ld_a_b(&mut self) {
         self.a = self.b;
-        self.pc += 1;
     }
     
 }
