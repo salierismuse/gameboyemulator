@@ -13,6 +13,36 @@ pub struct Cpu {
     pub f: u8,
 }
 
+struct Gameboy {
+    cpu: Cpu,
+    memory: [u8; 65536],
+}
+
+impl Gameboy {
+    fn step(&mut self) {
+        // attain opcode
+        let opcode = self.fetch_byte();
+        // match and execute
+        self.execute_opcode(opcode);
+    }
+
+    fn fetch_byte(&mut self) -> u8 {
+        let opcode = self.memory[self.cpu.pc as usize];
+        // proper wrapping for overflows
+        self.cpu.pc = self.cpu.pc.wrapping_add(1);
+        opcode
+    }
+
+    fn execute_opcode(&mut self, opcode: u8){
+        match opcode {
+            0x78 => self.cpu.ld_a_b(),
+            _ => unimplemented!("nothing here yet"),
+        }
+    }
+
+
+}
+
 impl Cpu {
     pub fn new() -> Self {
         Cpu {
@@ -25,4 +55,5 @@ impl Cpu {
         self.a = self.b;
         self.pc += 1;
     }
+    
 }

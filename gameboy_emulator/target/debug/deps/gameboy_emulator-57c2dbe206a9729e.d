@@ -1,0 +1,5 @@
+/home/salieri/projects/gameboyem/gameboy_emulator/target/debug/deps/libgameboy_emulator-57c2dbe206a9729e.rmeta: src/main.rs
+
+/home/salieri/projects/gameboyem/gameboy_emulator/target/debug/deps/gameboy_emulator-57c2dbe206a9729e.d: src/main.rs
+
+src/main.rs:
