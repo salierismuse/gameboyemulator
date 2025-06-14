@@ -35,11 +35,33 @@ impl Gameboy {
 
     fn execute_opcode(&mut self, opcode: u8){
         match opcode {
-            0x78 => self.cpu.ld_a_b(),
+            0x78 => self.ld_a_b(),
+            0x3E => self.ld_a_n(),
+            0xFA => self.ld_a_nn(),
             _ => unimplemented!("nothing here yet"),
         }
     }
 
+
+    // lds
+    fn ld_a_b(&mut self) {
+        self.cpu.a = self.cpu.b;
+    }
+
+    fn ld_a_n(&mut self) {
+        self.cpu.a = self.memory[self.cpu.pc as usize];
+        self.cpu.pc = self.cpu.pc.wrapping_add(1);
+    
+    }
+
+    fn ld_a_nn(&mut self) {
+        let low_byte = self.memory[self.cpu.pc as usize];
+        self.cpu.pc = self.cpu.pc.wrapping_add(1);
+        let high_byte = self.memory[self.cpu.pc as usize];
+        self.cpu.pc = self.cpu.pc.wrapping_add(1);
+        let total_byte = (high_byte as u16) << 8 | (low_byte as u16);
+        self.cpu.a = self.memory[total_byte as usize];
+    }
 
 }
 
@@ -50,9 +72,4 @@ impl Cpu {
             sp: 0, pc: 0, f: 0,
         }
     }
-
-    fn ld_a_b(&mut self) {
-        self.a = self.b;
-    }
-    
 }
