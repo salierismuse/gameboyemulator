@@ -147,14 +147,6 @@ fn execute_opcode(&mut self, opcode: u8){
         0x30 => self.jr_cc_n("nc"),
         0x38 => self.jr_cc_n("c"),
 
-        //adds
-        0x87 => self.add_a_a(),
-        0x80 => self.add_a_b(),
-
-        //subs
-        0x9F => self.sub_a_a(),
-        0x98 => self.sub_a_b(),
-
         //AND
         0xA7 => self.and_a_gen('a'),
         0xA0 => self.and_a_gen('b'),
@@ -215,31 +207,17 @@ fn execute_opcode(&mut self, opcode: u8){
     //misc reg helpers
     fn get_reg(&mut self, reg: char) -> &mut u8
     {
-        let curr_reg = match reg {
-             'a' => &mut self.cpu.a,
-             'b' => &mut self.cpu.b,
-             'c' => &mut self.cpu.c,
-             'd' => &mut self.cpu.d,
-             'e' => &mut self.cpu.e,
-             'h' => &mut self.cpu.h,
-             'l' => &mut self.cpu.l,
-                _ => unimplemented!("fail")
-            };
-            return curr_reg
-    }
-
-    let curr_reg2 = match reg {
-             'a' => &mut self.cpu.a,
-             'b' => &mut self.cpu.b,
-             'c' => &mut self.cpu.c,
-             'd' => &mut self.cpu.d,
-             'e' => &mut self.cpu.e,
-             'h' => &mut self.cpu.h,
-             'l' => &mut self.cpu.l,
-                _ => unimplemented!("fail")
-            };
-    let pair = (curr_reg1, curr_reg2);
-    return pair
+    let curr_reg = match reg {
+            'a' => &mut self.cpu.a,
+            'b' => &mut self.cpu.b,
+            'c' => &mut self.cpu.c,
+            'd' => &mut self.cpu.d,
+            'e' => &mut self.cpu.e,
+            'h' => &mut self.cpu.h,
+            'l' => &mut self.cpu.l,
+            _ => unimplemented!("fail")
+        };
+        return curr_reg
     }
 
     // flag helpers
@@ -427,7 +405,7 @@ fn execute_opcode(&mut self, opcode: u8){
             self.unset_z_flag();
         }
         self.set_n_flag();
-        if (old_value & 0x0F) == 0X00 {
+        if (old_value & 0x0F) == 0x00 {
             self.set_h_flag();
         }
         else {
@@ -460,7 +438,6 @@ fn execute_opcode(&mut self, opcode: u8){
             }
             _ => unimplemented!("fail")
         }
-    }
     }
 
     //halt
@@ -695,7 +672,7 @@ fn execute_opcode(&mut self, opcode: u8){
     fn add_a_hl(&mut self) {
         let address = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
         let old_value = self.cpu.a;
-        let val = self.memory[address];
+        let val = self.memory[address as usize];
         let (result, overflow) = self.cpu.a.overflowing_add(val);
         self.cpu.a = result;
         self.unset_n_flag();
@@ -784,7 +761,7 @@ fn execute_opcode(&mut self, opcode: u8){
     fn sub_a_hl(&mut self) {
         let address = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
         let old_value = self.cpu.a;
-        let val = self.memory[address];
+        let val = self.memory[address as usize];
         let (result, overflow) = self.cpu.a.overflowing_sub(val);
         self.cpu.a = result;
         self.set_n_flag();
@@ -815,7 +792,7 @@ fn execute_opcode(&mut self, opcode: u8){
         let val = self.fetch_byte();
         let (result, overflow) = self.cpu.a.overflowing_sub(val);
         self.cpu.a = result;
-        self.set_n_flag;
+        self.set_n_flag();
         if self.cpu.a == 0{
             self.set_z_flag();
         }
@@ -859,7 +836,7 @@ fn execute_opcode(&mut self, opcode: u8){
 
     fn xor_hl(&mut self){
         let byte = (self.cpu.h as u16) << 8 ^ self.cpu.l as u16;
-        let val = self.memory[byte];
+        let val = self.memory[byte as usize];
         self.cpu.a = self.cpu.a | val;
         if self.cpu.a == 0 {
             self.set_z_flag();
@@ -904,7 +881,7 @@ fn execute_opcode(&mut self, opcode: u8){
 
     fn or_hl(&mut self){
         let byte = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
-        let val = self.memory[byte];
+        let val = self.memory[byte as usize];
         self.cpu.a = self.cpu.a | val;
         if self.cpu.a == 0 {
             self.set_z_flag();
@@ -937,7 +914,7 @@ fn execute_opcode(&mut self, opcode: u8){
         let curr_reg = self.get_reg(reg);
         let curr = *curr_reg;
         drop(curr_reg);
-        let (result, overflow) = self.reg.a.overflowing_sub(curr);
+        let (result, overflow) = self.cpu.a.overflowing_sub(curr);
         if result == 0 {
             self.set_z_flag();
         }
