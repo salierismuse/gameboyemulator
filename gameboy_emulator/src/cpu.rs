@@ -116,6 +116,67 @@ fn execute_opcode(&mut self, opcode: u8){
         0x6C => self.ld_r_r('l', 'h'),  // ld l,h
         0x6D => self.ld_r_r('l', 'l'),  // ld l,l
 
+        //ADD - all variants
+        0x87 => self.add_a_x('a'),  // add a,a
+        0x80 => self.add_a_x('b'),  // add a,b  
+        0x81 => self.add_a_x('c'),  // add a,c
+        0x82 => self.add_a_x('d'),  // add a,d
+        0x83 => self.add_a_x('e'),  // add a,e
+        0x84 => self.add_a_x('h'),  // add a,h
+        0x85 => self.add_a_x('l'),  // add a,l
+        0x86 => self.add_a_hl(),    // add a,(hl)
+        0xC6 => self.add_a_n(),     // add a,n
+
+        //SUB - all variants  
+        0x97 => self.sub_a_x('a'),  // sub a,a
+        0x90 => self.sub_a_x('b'),  // sub a,b
+        0x91 => self.sub_a_x('c'),  // sub a,c
+        0x92 => self.sub_a_x('d'),  // sub a,d
+        0x93 => self.sub_a_x('e'),  // sub a,e
+        0x94 => self.sub_a_x('h'),  // sub a,h
+        0x95 => self.sub_a_x('l'),  // sub a,l
+        0x96 => self.sub_a_hl(),    // sub a,(hl)
+        0xD6 => self.sub_a_n(),     // sub a,n
+
+        //XOR - all variants
+        0xAF => self.xor_r('a'),    // xor a,a 
+        0xA8 => self.xor_r('b'),    // xor a,b
+        0xA9 => self.xor_r('c'),    // xor a,c
+        0xAA => self.xor_r('d'),    // xor a,d
+        0xAB => self.xor_r('e'),    // xor a,e
+        0xAC => self.xor_r('h'),    // xor a,h
+        0xAD => self.xor_r('l'),    // xor a,l
+        0xAE => self.xor_hl(),      // xor a,(hl)
+        0xEE => self.xor_n(),       // xor a,n
+
+        //OR - all variants
+        0xB7 => self.or_r('a'),     // or a,a
+        0xB0 => self.or_r('b'),     // or a,b
+        0xB1 => self.or_r('c'),     // or a,c
+        0xB2 => self.or_r('d'),     // or a,d
+        0xB3 => self.or_r('e'),     // or a,e
+        0xB4 => self.or_r('h'),     // or a,h
+        0xB5 => self.or_r('l'),     // or a,l
+        0xB6 => self.or_hl(),       // or a,(hl)
+        0xF6 => self.or_n(),        // or a,n
+
+        //CP (compare) - all variants
+        0xBF => self.cp_r_n('a'),   // cp a,a
+        0xB8 => self.cp_r_n('b'),   // cp a,b
+        0xB9 => self.cp_r_n('c'),   // cp a,c
+        0xBA => self.cp_r_n('d'),   // cp a,d
+        0xBB => self.cp_r_n('e'),   // cp a,e
+        0xBC => self.cp_r_n('h'),   // cp a,h
+        0xBD => self.cp_r_n('l'),   // cp a,l
+        0xBE => self.cp_hl(),       // cp a,(hl)
+        0xFE => self.cp_n(),        // cp a,n
+
+        // PUSH operations 
+        0xF5 => self.push_nn("af"), // push af
+        0xC5 => self.push_nn("bc"), // push bc
+        0xD5 => self.push_nn("de"), // push de
+        0xE5 => self.push_nn("hl"), // push hl
+
         //CALL
         0xCD => self.call_nn(),
         0xC4 => self.call_cc_nn("nz"),
@@ -503,7 +564,6 @@ fn execute_opcode(&mut self, opcode: u8){
     // lds
 
     //ld x, n, immediate
-    // add opcodes
     fn ld_x_n(&mut self, reg: char)
     {
             let val = self.fetch_byte();
@@ -522,7 +582,6 @@ fn execute_opcode(&mut self, opcode: u8){
     }
 
     //ld, reg to reg
-    //add opcodes
     fn ld_r_r(&mut self, reg1: char, reg2: char){
           let curr_reg2 = match reg2 {
             'a' => self.cpu.a,
@@ -726,6 +785,102 @@ fn execute_opcode(&mut self, opcode: u8){
         }
     }
 
+    // potential edge case where adding the flag bit overflows val and we crash
+    fn adc_a_x(&mut self, reg: char) {
+        let old_value = self.cpu.a;
+        let curr_reg = self.get_reg(reg);
+        let val = *curr_reg;
+        drop(curr_reg);
+        let (result1, overflow1) = self.cpu.a.overflowing_add(val);
+        let (result, overflow2) = result1.overflowing_add(self.c_flag_bool() as u8);
+        let overflow = (overflow1 || overflow2);
+
+        self.cpu.a = result;
+        self.unset_n_flag();
+        if self.cpu.a == 0{
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+
+        if (old_value & 0x0F) + (val & 0x0F) + self.c_flag_bool() as u8 > 0x0F {
+            self.set_h_flag();
+        }
+        else {
+            self.unset_h_flag();
+        }
+
+        if overflow {
+            self.set_c_flag();
+        }
+        else {
+            self.unset_c_flag();
+        }
+    }
+
+    fn adc_a_hl(&mut self) {
+        let address = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+        let old_value = self.cpu.a;
+        let val = self.memory[address as usize];
+        let (result1, overflow1) = self.cpu.a.overflowing_add(val);
+        let (result, overflow2) = result1.overflowing_add(self.c_flag_bool() as u8);
+        let overflow = (overflow1 || overflow2);
+        self.cpu.a = result;
+        self.unset_n_flag();
+        if self.cpu.a == 0{
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+
+        if (old_value & 0x0F) + (val & 0x0F) + self.c_flag_bool() as u8 > 0x0F {
+            self.set_h_flag();
+        }
+        else {
+            self.unset_h_flag();
+        }
+
+        if overflow {
+            self.set_c_flag();
+        }
+        else {
+            self.unset_c_flag();
+        }
+    }
+
+    fn adc_a_n(&mut self) {
+        let val = self.fetch_byte();
+        let old_value = self.cpu.a;
+        let (result1, overflow1) = self.cpu.a.overflowing_add(val);
+        let (result, overflow2) = result1.overflowing_add(self.c_flag_bool() as u8);
+        let overflow = overflow1 || overflow2;
+        self.cpu.a = result;
+        self.unset_n_flag();
+        if self.cpu.a == 0{
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+
+        if (old_value & 0x0F) + (val & 0x0F) + self.c_flag_bool() as u8 > 0x0F {
+            self.set_h_flag();
+        }
+        else {
+            self.unset_h_flag();
+        }
+
+        if overflow {
+            self.set_c_flag();
+        }
+        else {
+            self.unset_c_flag();
+        }
+    }
+
+
     //sub functions
 
     fn sub_a_x(&mut self, reg: char) {
@@ -816,6 +971,100 @@ fn execute_opcode(&mut self, opcode: u8){
 
     }
 
+    fn sbc_a_x(&mut self, reg: char) {
+        let old_value = self.cpu.a;
+        let curr_reg = self.get_reg(reg);
+        let val = *curr_reg;
+        drop(curr_reg);
+        let (result1, overflow1) = self.cpu.a.overflowing_sub(val);
+        let (result, overflow2) = result1.overflowing_sub(self.c_flag_bool() as u8);
+        let overflow = overflow1 || overflow2;
+        self.cpu.a = result;
+        self.set_n_flag();
+        if self.cpu.a == 0{
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+
+        if (old_value & 0x0F) < (val & 0x0F) + (self.c_flag_bool() as u8) {
+            self.set_h_flag();
+        }
+        else {
+            self.unset_h_flag();
+        }
+
+        if overflow {
+            self.set_c_flag();
+        }
+        else {
+            self.unset_c_flag();
+        }
+    }
+
+    fn sbc_a_hl(&mut self) {
+        let address = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+        let old_value = self.cpu.a;
+        let val = self.memory[address as usize];
+        let (result1, overflow1) = self.cpu.a.overflowing_sub(val);
+        let (result, overflow2) = result1.overflowing_sub(self.c_flag_bool() as u8);
+        let overflow = overflow1 || overflow2;
+        self.cpu.a = result;
+        self.set_n_flag();
+        if self.cpu.a == 0{
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+
+        if (old_value & 0x0F) < (val & 0x0F) + (self.c_flag_bool() as u8) {
+            self.set_h_flag();
+        }
+        else {
+            self.unset_h_flag();
+        }
+
+        if overflow {
+            self.set_c_flag();
+        }
+        else {
+            self.unset_c_flag();
+        }
+    }
+
+    fn sbc_a_n(&mut self) {
+        let old_value = self.cpu.a;
+        let val = self.fetch_byte();
+        let (result1, overflow1) = self.cpu.a.overflowing_sub(val);
+        let (result, overflow2) = result1.overflowing_sub(self.c_flag_bool() as u8);
+        let overflow = overflow1 || overflow2;
+        self.cpu.a = result;
+        self.set_n_flag();
+        if self.cpu.a == 0{
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+
+        if (old_value & 0x0F) < (val & 0x0F) + (self.c_flag_bool() as u8) {
+            self.set_h_flag();
+        }
+        else {
+            self.unset_h_flag();
+        }
+
+        if overflow {
+            self.set_c_flag();
+        }
+        else {
+            self.unset_c_flag();
+        }
+
+    }
+
     //xors
 
     fn xor_r(&mut self, reg: char){
@@ -835,9 +1084,9 @@ fn execute_opcode(&mut self, opcode: u8){
     }
 
     fn xor_hl(&mut self){
-        let byte = (self.cpu.h as u16) << 8 ^ self.cpu.l as u16;
+        let byte = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
         let val = self.memory[byte as usize];
-        self.cpu.a = self.cpu.a | val;
+        self.cpu.a = self.cpu.a ^ val;
         if self.cpu.a == 0 {
             self.set_z_flag();
         }
