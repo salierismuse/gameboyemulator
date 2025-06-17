@@ -138,6 +138,28 @@ fn execute_opcode(&mut self, opcode: u8){
         0x96 => self.sub_a_hl(),    // sub a,(hl)
         0xD6 => self.sub_a_n(),     // sub a,n
 
+        // adc 
+        0x8F => self.adc_a_x('a'),  // adc a,a
+        0x88 => self.adc_a_x('b'),  // adc a,b
+        0x89 => self.adc_a_x('c'),  // adc a,c
+        0x8A => self.adc_a_x('d'),  // adc a,d
+        0x8B => self.adc_a_x('e'),  // adc a,e
+        0x8C => self.adc_a_x('h'),  // adc a,h
+        0x8D => self.adc_a_x('l'),  // adc a,l
+        0x8E => self.adc_a_hl(),    // adc a,(hl)
+        0xCE => self.adc_a_n(),     // adc a,n
+
+        // sbc
+        0x9F => self.sbc_a_x('a'),  // sbc a,a
+        0x98 => self.sbc_a_x('b'),  // sbc a,b
+        0x99 => self.sbc_a_x('c'),  // sbc a,c
+        0x9A => self.sbc_a_x('d'),  // sbc a,d
+        0x9B => self.sbc_a_x('e'),  // sbc a,e
+        0x9C => self.sbc_a_x('h'),  // sbc a,h
+        0x9D => self.sbc_a_x('l'),  // sbc a,l
+        0x9E => self.sbc_a_hl(),    // sbc a,(hl)
+        0xDE => self.sbc_a_n(),     // sbc a,n
+
         //XOR - all variants
         0xAF => self.xor_r('a'),    // xor a,a 
         0xA8 => self.xor_r('b'),    // xor a,b
@@ -193,7 +215,32 @@ fn execute_opcode(&mut self, opcode: u8){
         0xD9 => self.reti(),
 
         //loads - memory
+
+        0x7E => self.ld_r_hl('a'),    // ld a,(hl)
+        0x46 => self.ld_r_hl('b'),    // ld b,(hl) 
+        0x4E => self.ld_r_hl('c'),    // ld c,(hl)
+        0x56 => self.ld_r_hl('d'),    // ld d,(hl)
+        0x5E => self.ld_r_hl('e'),    // ld e,(hl)
+        0x66 => self.ld_r_hl('h'),    // ld h,(hl)
+        0x6E => self.ld_r_hl('l'),    // ld l,(hl)
+
+        0x77 => self.ld_hl_r('a'),    // ld (hl),a
+        0x70 => self.ld_hl_r('b'),    // ld (hl),b
+        0x71 => self.ld_hl_r('c'),    // ld (hl),c
+        0x72 => self.ld_hl_r('d'),    // ld (hl),d
+        0x73 => self.ld_hl_r('e'),    // ld (hl),e
+        0x74 => self.ld_hl_r('h'),    // ld (hl),h
+        0x75 => self.ld_hl_r('l'),    // ld (hl),l
+
+        0x36 => self.ld_hl_n(),       // ld (hl),n
+        0xBE => self.cp_hl(),         // cp a,(hl)
+        0xFE => self.cp_n(),          // cp a,n
+
         0xFA => self.ld_a_nn(),
+        0x21 => self.ld_r_nn("hl"),
+        0x01 => self.ld_r_nn("bc"),
+        0x11 => self.ld_r_nn("de"),
+        0x31 => self.ld_r_nn("sp"),
 
         //jumps
         0xC3 => self.jp_nn(),
@@ -260,9 +307,36 @@ fn execute_opcode(&mut self, opcode: u8){
         0xC1 => self.pop_r_r("bc"),
         0xD1 => self.pop_r_r("de"), 
         0xE1 => self.pop_r_r("hl"),
+
+        0x07 => self.rlca(),    // rotate a left circular
+        0x0F => self.rrca(),    // rotate a right circular  
+        0x17 => self.rla(),     // rotate a left through carry
+        0x1F => self.rra(),     // rotate a right through carry
+
+        //cb exit
+        0xCB => self.execute_cb_opcode(self.fetch_byte())
        
        _ => unimplemented!("nothing here yet"),
    }
+}
+
+
+fn execute_cb_opcode(&mut self, opcode: u8){
+        let operation = opcode >> 6;
+        let bit_num = (opcode >> 3) & 0x07;
+        let reg_index = opcode & 0x07;
+
+        let reg_char = match reg_index {
+        0 => 'b', 1 => 'c', 2 => 'd', 3 => 'e',
+        4 => 'h', 5 => 'l', 6 => '?', 7 => 'a', 
+        _ => unreachable!()
+    };
+     match operation {
+        1 => self.bit_b_r(bit_num, reg_char),  // BIT
+        2 => self.res_b_r(bit_num, reg_char),  // RES  
+        3 => self.set_b_r(bit_num, reg_char),  // SET
+        _ => unimplemented!("not a bit operation")
+    }
 }
 
     //misc reg helpers
@@ -320,6 +394,91 @@ fn execute_opcode(&mut self, opcode: u8){
         self.cpu.f & 0b00010000 != 0
     }
     
+    // rotate
+    fn rlca(&mut self) {
+        self.cpu.a = self.cpu.a.rotate_left(1);
+        self.unset_n_flag();
+        self.unset_h_flag();
+        if (self.cpu.a == 0)
+        {
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+        if (self.cpu.a & 0b00000001 != 0)
+        {
+            self.set_c_flag();
+        }
+        else{
+            self.unset_c_flag();
+        }
+    }
+
+    fn rrca(&mut self) {
+        self.cpu.a = self.cpu.a.rotate_right(1);
+        self.unset_n_flag();
+        self.unset_h_flag();
+        if (self.cpu.a == 0)
+        {
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+        if (self.cpu.a & 0b10000000 != 0)
+        {
+            self.set_c_flag();
+        }
+        else{
+            self.unset_c_flag();
+        }
+    }
+
+    fn rla(&mut self) {
+        let old_carry = self.c_flag_bool();
+        let old_bit_7 = (self.cpu.a & 0b10000000) != 0;
+        self.cpu.a = self.cpu.a << 1;
+        if old_carry {
+            self.cpu.a |= 0b00000001;  
+        }
+        if old_bit_7 {
+            self.set_c_flag();
+        } else {
+         self.unset_c_flag();
+        }
+        if self.cpu.a == 0 {
+            self.set_z_flag();
+        } else {
+            self.unset_z_flag();
+
+            }
+        self.unset_n_flag();
+        self.unset_h_flag();
+    }
+
+    fn rra(&mut self) {
+        let old_carry = self.c_flag_bool();
+        let old_bit_0 = (self.cpu.a & 0b00000001) != 0;
+        self.cpu.a = self.cpu.a >> 1;
+        if old_carry {
+            self.cpu.a |= 0b10000000;  
+        }
+        if old_bit_0 {
+            self.set_c_flag();
+        } else {
+         self.unset_c_flag();
+        }
+        if self.cpu.a == 0 {
+            self.set_z_flag();
+        } else {
+            self.unset_z_flag();
+
+            }
+        self.unset_n_flag();
+        self.unset_h_flag();
+    }
+
     // call
 
     fn call_loader(&mut self, byte: u16){
@@ -561,6 +720,36 @@ fn execute_opcode(&mut self, opcode: u8){
         self.unset_c_flag();
     }
 
+    // bit stuff
+    fn bit_b_r(&mut self, bit: u8, reg: char) {
+        self.unset_n_flag();
+        self.set_h_flag();
+        let curr_reg = self.get_reg(reg);
+        let val = *curr_reg;
+        drop(curr_reg);
+        let mask = 1 << bit;
+        if (val & mask == 0)
+        {
+            self.set_z_flag();
+        }
+        else
+        {
+            self.unset_z_flag();
+        }
+    }
+
+    fn set_b_r(&mut self, bit: u8, reg: char) {
+        let curr_reg = self.get_reg(reg);
+        let mask = 1 << bit;
+        *curr_reg |= mask;
+    }
+
+    fn res_b_r(&mut self, bit: u8, reg: char) {
+        let curr_reg = self.get_reg(reg);
+        let mask = 1 << bit;
+        *curr_reg &= !mask;
+    }
+
     // lds
 
     //ld x, n, immediate
@@ -620,6 +809,50 @@ fn execute_opcode(&mut self, opcode: u8){
         let total_byte = (high_byte as u16) << 8 | (low_byte as u16);
         self.cpu.a = self.memory[total_byte as usize];
     }
+
+    fn ld_hl_r(&mut self, reg: char) {
+        let total_byte = (self.cpu.h as u16) << 8 | (self.cpu.l as u16);
+        let curr_reg = self.get_reg(reg);
+        let val = *curr_reg;
+        drop(curr_reg);
+        self.memory[total_byte as usize] = val;
+    }   
+
+    fn ld_r_hl(&mut self, reg: char) {
+        let total_byte = (self.cpu.h as u16) << 8 | (self.cpu.l as u16);
+        let val = self.memory[total_byte as usize];
+        let curr_reg = self.get_reg(reg);
+        *curr_reg = val;
+    }   
+
+    fn ld_hl_n(&mut self) {
+        let total_byte = (self.cpu.h as u16) << 8 | (self.cpu.l as u16);
+        self.memory[total_byte as usize] = self.fetch_byte();
+    }
+
+    fn ld_r_nn(&mut self, reg_pair: &str) {
+        match reg_pair {
+            "bc" => {
+                self.cpu.c = self.fetch_byte();
+                self.cpu.b = self.fetch_byte();
+            }
+            "de" => {
+                self.cpu.e = self.fetch_byte();
+                self.cpu.d = self.fetch_byte();
+            }
+            "hl" => {
+                self.cpu.l = self.fetch_byte();
+                self.cpu.h = self.fetch_byte();
+            }
+            "sp" => {
+                let low_byte = self.fetch_byte();
+                let high_byte = self.fetch_byte();
+                let total_byte = (high_byte as u16 << 8 | low_byte as u16);
+                self.cpu.sp = total_byte;
+            }
+            _ => unimplemented!("fail")
+    }
+}
 
     // jumps
 
@@ -1172,6 +1405,57 @@ fn execute_opcode(&mut self, opcode: u8){
         }
         self.set_n_flag();
         if (old_value & 0x0F) < (curr & 0x0F) {
+            self.set_h_flag();
+        }
+        else {
+            self.unset_h_flag();
+        }
+        if overflow {
+            self.set_c_flag();
+        }
+        else {
+            self.unset_c_flag();
+        }
+    }
+    
+    fn cp_r_hl(&mut self) {
+        let old_value = self.cpu.a;
+        let total_byte = (self.cpu.h as u16) << 8 | (self.cpu.l as u16);
+        let val = self.memory[total_byte as usize];
+        let (result, overflow) = self.cpu.a.overflowing_sub(val);
+        if result == 0 {
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+        self.set_n_flag();
+        if (old_value & 0x0F) < (val & 0x0F) {
+            self.set_h_flag();
+        }
+        else {
+            self.unset_h_flag();
+        }
+        if overflow {
+            self.set_c_flag();
+        }
+        else {
+            self.unset_c_flag();
+        }
+    }
+
+   fn cp_r_n(&mut self) {
+        let old_value = self.cpu.a;
+        let val = self.fetch_byte();
+        let (result, overflow) = self.cpu.a.overflowing_sub(val);
+        if result == 0 {
+            self.set_z_flag();
+        }
+        else {
+            self.unset_z_flag();
+        }
+        self.set_n_flag();
+        if (old_value & 0x0F) < (val & 0x0F) {
             self.set_h_flag();
         }
         else {
