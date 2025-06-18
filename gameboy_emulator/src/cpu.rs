@@ -126,6 +126,9 @@ fn execute_opcode(&mut self, opcode: u8){
         0x6C => self.ld_r_r('l', 'h'),  // ld l,h
         0x6D => self.ld_r_r('l', 'l'),  // ld l,l
 
+        0xE0 => self.ldh_n_a(),
+        0xF0 => self.ldh_a_n(),
+
         //ADD - all variants
         0x87 => self.add_a_x('a'),  // add a,a
         0x80 => self.add_a_x('b'),  // add a,b  
@@ -200,8 +203,8 @@ fn execute_opcode(&mut self, opcode: u8){
         0xBB => self.cp_r_n('e'),   // cp a,e
         0xBC => self.cp_r_n('h'),   // cp a,h
         0xBD => self.cp_r_n('l'),   // cp a,l
-        // 0xBE => self.cp_hl(),       // cp a,(hl)
-        // 0xFE => self.cp_n(),        // cp a,n
+        //0xBE => self.cp_hl(),       // cp a,(hl)
+        0xFE => self.cp_n(),        // cp a,n
 
         // PUSH operations 
         0xF5 => self.push_nn("af"), // push af
@@ -245,6 +248,8 @@ fn execute_opcode(&mut self, opcode: u8){
         0x36 => self.ld_hl_n(),       // ld (hl),n
         // 0xBE => self.cp_hl(),         // cp a,(hl)
         // 0xFE => self.cp_n(),          // cp a,n
+
+        0x32 => self.ldd_hl_a(),
 
         0xFA => self.ld_a_nn(),
         0x21 => self.ld_r_nn("hl"),
@@ -312,6 +317,9 @@ fn execute_opcode(&mut self, opcode: u8){
         0x2B => self.dec_r_nn("hl"),
         0x3B => self.dec_r_nn("sp"),
 
+        // rst
+        0xFF => self.rst(0x38),
+
         // pop
         0xF1 => self.pop_r_r("af"),
         0xC1 => self.pop_r_r("bc"),
@@ -323,13 +331,16 @@ fn execute_opcode(&mut self, opcode: u8){
         0x17 => self.rl_r("a"),     // rotate a left through carry
         0x1F => self.rr_r("a"),     // rotate a right through carry
 
+        //interrupts
+        0xF3 => self.di(),
+
         //cb exit
         0xCB => {
             let val = self.fetch_byte();
             self.execute_cb_opcode(val);
         }
        
-       _ => unimplemented!("nothing here yet"),
+       _ => unimplemented!("opcode 0x{:02X} not implemented yet", opcode),
    }
 }
 
@@ -448,6 +459,16 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         }
     }
     
+    // rst
+    fn rst(&mut self, addr: u8) {
+
+        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+        self.memory[self.cpu.sp as usize] = (self.cpu.pc >> 8) as u8;  // high byte
+        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+        self.memory[self.cpu.sp as usize] = self.cpu.pc as u8;         // low byte
+        self.cpu.pc = addr as u16;
+    }
+
     // rotate
     fn rlc_r(&mut self, reg: &str) {
         let (old_bit_7, val) = if reg == "hl"{
@@ -844,6 +865,11 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         self.unset_c_flag();
     }
 
+    // interrupts
+    fn di(&mut self) {
+        self.cpu.ime = false;  
+    }
+
     // bit stuff
     fn bit_b_r(&mut self, bit: u8, reg: char) {
         self.unset_n_flag();
@@ -876,10 +902,28 @@ fn execute_cb_opcode(&mut self, opcode: u8){
 
     // lds
 
+    fn ldh_a_n(&mut self) {
+        let inc = self.fetch_byte() as u16;
+        let addr = (inc + 0xFF00) as u16;
+        self.cpu.a = self.memory[addr as usize];
+    }
+
+    fn ldh_n_a(&mut self) {
+        let val = self.cpu.a;
+        let inc = self.fetch_byte() as u16;
+        let addr = (inc + 0xFF00) as u16;
+        self.memory[addr as usize] = val;
+    }
+
+    fn ldd_hl_a(&mut self) {
+        self.ld_hl_r('a');
+        self.dec_r_nn("hl");
+    }
+
     //ld x, n, immediate
     fn ld_x_n(&mut self, reg: char)
     {
-            let val = self.fetch_byte();
+        let val = self.fetch_byte();
             let curr_reg = match reg {
             'a' => &mut self.cpu.a,
             'b' => &mut self.cpu.b,
@@ -1515,6 +1559,14 @@ fn execute_cb_opcode(&mut self, opcode: u8){
     }
 
     // compare
+
+    fn cp_n(&mut self){
+        let old_value = self.cpu.a;
+        let cmp_val = self.fetch_byte();
+        let (result, overflow) = self.cpu.a.overflowing_sub(cmp_val);   
+        self.set_flags(if result == 0 {'y'} else {'n'}, if (old_value & 0x0F) < (cmp_val & 0x0f) {'y'} else {'n'}, if (old_value * 0x0F) < (cmp_val & 0x0F) {'y'} else {'n'}, if overflow {'y'} else {'n'})
+    }
+
     fn cp_r_n(&mut self, reg: char) {
         let old_value = self.cpu.a;
         let curr_reg = self.get_reg(reg);
@@ -1576,7 +1628,7 @@ impl Cpu {
     pub fn new() -> Self {
         Cpu {
             a: 0, b: 0, c: 0, d: 0, e: 0, h: 0, l: 0, 
-            sp: 0, pc: 0, f: 0, halted: true, ime: false,
+            sp: 0, pc: 0, f: 0, halted: false, ime: false,
         }
     }
 }

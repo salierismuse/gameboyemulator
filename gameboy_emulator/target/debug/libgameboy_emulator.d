@@ -1,1 +1,1 @@
-/home/salieri/projects/gameboyem/gameboy_emulator/target/debug/libgameboy_emulator.rlib: /home/salieri/projects/gameboyem/gameboy_emulator/src/lib.rs
+C:\Users\Isaac\OneDrive\Desktop\gameboyem\gameboyemulator\gameboy_emulator\target\debug\libgameboy_emulator.rlib: C:\Users\Isaac\OneDrive\Desktop\gameboyem\gameboyemulator\gameboy_emulator\src\lib.rs
