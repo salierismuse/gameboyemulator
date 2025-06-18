@@ -1,5 +1,7 @@
 const ZERO_FLAG: u8 = 0b10000000;
 const CARRY_FLAG: u8 = 0b00010000;
+// just make a blanket flag resetter function when you can pass ignore in for flags you dont touch lol.
+
 
 //test
 
@@ -52,6 +54,14 @@ impl Gameboy {
         // proper wrapping for overflows
         self.cpu.pc = self.cpu.pc.wrapping_add(1);
         opcode
+    }
+
+    pub fn load_rom(&mut self, rom_data: &[u8]){
+        for (i, &byte) in rom_data.iter().enumerate() {
+            if i < 0x8000 {
+                self.memory[i] = byte;
+            }
+        }
     }
 
 fn execute_opcode(&mut self, opcode: u8){
@@ -190,8 +200,8 @@ fn execute_opcode(&mut self, opcode: u8){
         0xBB => self.cp_r_n('e'),   // cp a,e
         0xBC => self.cp_r_n('h'),   // cp a,h
         0xBD => self.cp_r_n('l'),   // cp a,l
-        0xBE => self.cp_hl(),       // cp a,(hl)
-        0xFE => self.cp_n(),        // cp a,n
+        // 0xBE => self.cp_hl(),       // cp a,(hl)
+        // 0xFE => self.cp_n(),        // cp a,n
 
         // PUSH operations 
         0xF5 => self.push_nn("af"), // push af
@@ -233,8 +243,8 @@ fn execute_opcode(&mut self, opcode: u8){
         0x75 => self.ld_hl_r('l'),    // ld (hl),l
 
         0x36 => self.ld_hl_n(),       // ld (hl),n
-        0xBE => self.cp_hl(),         // cp a,(hl)
-        0xFE => self.cp_n(),          // cp a,n
+        // 0xBE => self.cp_hl(),         // cp a,(hl)
+        // 0xFE => self.cp_n(),          // cp a,n
 
         0xFA => self.ld_a_nn(),
         0x21 => self.ld_r_nn("hl"),
@@ -308,13 +318,16 @@ fn execute_opcode(&mut self, opcode: u8){
         0xD1 => self.pop_r_r("de"), 
         0xE1 => self.pop_r_r("hl"),
 
-        0x07 => self.rlca(),    // rotate a left circular
-        0x0F => self.rrca(),    // rotate a right circular  
-        0x17 => self.rla(),     // rotate a left through carry
-        0x1F => self.rra(),     // rotate a right through carry
+        0x07 => self.rlc_r("a"),    // rotate a left circular
+        0x0F => self.rrc_r("a"),    // rotate a right circular  
+        0x17 => self.rl_r("a"),     // rotate a left through carry
+        0x1F => self.rr_r("a"),     // rotate a right through carry
 
         //cb exit
-        0xCB => self.execute_cb_opcode(self.fetch_byte())
+        0xCB => {
+            let val = self.fetch_byte();
+            self.execute_cb_opcode(val);
+        }
        
        _ => unimplemented!("nothing here yet"),
    }
@@ -331,7 +344,21 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         4 => 'h', 5 => 'l', 6 => '?', 7 => 'a', 
         _ => unreachable!()
     };
-     match operation {
+    match operation {
+        0 => {
+            let reg_str = if reg_index == 6 { "hl" } else { &reg_char.to_string() };
+            match bit_num {
+                0 => self.rlc_r(reg_str),
+                1 => self.rrc_r(reg_str), 
+                2 => self.rl_r(reg_str),
+                3 => self.rr_r(reg_str),
+                4 => self.sla_r(reg_str),
+                5 => self.sra_r(reg_str),
+//                6 => self.swap_r(reg_str),  // you'll need this one
+//                7 => self.srl_r(reg_str),
+                _ => unreachable!()
+            }
+        }
         1 => self.bit_b_r(bit_num, reg_char),  // BIT
         2 => self.res_b_r(bit_num, reg_char),  // RES  
         3 => self.set_b_r(bit_num, reg_char),  // SET
@@ -393,91 +420,188 @@ fn execute_cb_opcode(&mut self, opcode: u8){
     fn c_flag_bool(&mut self) -> bool {
         self.cpu.f & 0b00010000 != 0
     }
+
+    fn set_flags(&mut self, z: char, n: char, h: char, c: char){
+        match z {
+            'i' => {},
+            'y' => self.set_z_flag(),
+            'n' => self.unset_z_flag(),
+            _ => unimplemented!("fail!")
+        }
+        match n {
+            'i' => {},
+            'y' => self.set_n_flag(),
+            'n' => self.unset_n_flag(),
+            _ => unimplemented!("fail!")
+        }
+        match h {
+            'i' => {},
+            'y' => self.set_h_flag(),
+            'n' => self.unset_h_flag(),
+            _ => unimplemented!("fail!")
+        }
+        match c {
+            'i' => {},
+            'y' => self.set_c_flag(),
+            'n' => self.unset_c_flag(),
+            _ => unimplemented!("fail!")
+        }
+    }
     
     // rotate
-    fn rlca(&mut self) {
-        self.cpu.a = self.cpu.a.rotate_left(1);
-        self.unset_n_flag();
-        self.unset_h_flag();
-        if (self.cpu.a == 0)
-        {
-            self.set_z_flag();
+    fn rlc_r(&mut self, reg: &str) {
+        let (old_bit_7, val) = if reg == "hl"{
+            let hl = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+            let mut val = self.memory[hl as usize];
+            let old_bit_7 = val & 0b10000000;
+            val = val.rotate_left(1);
+            (old_bit_7, val)
+
+        }
+        else { 
+            let curr_reg = self.get_reg(reg.chars().next().unwrap());
+            let old_bit_7 = *curr_reg & 0b10000000;
+            *curr_reg = (*curr_reg).rotate_left(1);
+            (old_bit_7, *curr_reg)
+        };
+         
+        self.set_flags(if val == 0 {'y'} else {'n'}, 'n', 'n', if old_bit_7 != 0 {'y'} else {'n'})
+    }
+
+    fn rrc_r(&mut self, reg: &str) {
+        let (old_bit_0, val) = if reg == "hl"{
+            let hl = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+            let mut val = self.memory[hl as usize];
+            let old_bit_0 = val & 0b00000001;
+            val = val.rotate_right(1);
+            (old_bit_0, val)
+
+        }
+        else { 
+            let curr_reg = self.get_reg(reg.chars().next().unwrap());
+            let old_bit_0 = *curr_reg & 0b00000001;
+            *curr_reg = (*curr_reg).rotate_right(1);
+            (old_bit_0, *curr_reg)
+        };
+         
+        self.set_flags(if val == 0 {'y'} else {'n'}, 'n', 'n', if old_bit_0 != 0 {'y'} else {'n'})
+    }
+
+    fn rl_r(&mut self, reg: &str) {
+        let old_carry = self.c_flag_bool();
+        let (old_bit_7, val) = if reg == "hl"{
+            let hl = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+            let mut val = self.memory[hl as usize];
+            let old_bit_7 = val & 0b10000000;
+            val = val << 1;
+            if old_carry {
+                val |= 0b00000001;
+            }
+            self.memory[hl as usize] = val;
+            (old_bit_7, val)
+        } else {
+            let curr_reg = self.get_reg(reg.chars().next().unwrap());
+            let old_bit_7 = (*curr_reg & 0b10000000);
+            *curr_reg = *curr_reg << 1;
+            if old_carry {
+                *curr_reg |= 0b00000001;
+            }
+            (old_bit_7, *curr_reg)
+        };
+    self.set_flags(if val == 0 {'y'} else {'n'}, 'n', 'n', if old_bit_7 != 0 {'y'} else {'n'});
+    }
+
+    fn rr_r(&mut self, reg: &str) {
+        let old_carry = self.c_flag_bool();
+        let (old_bit_0, val) = if reg == "hl"{
+            let hl = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+            let mut val = self.memory[hl as usize];
+            let old_bit_0 = val & 0b00000001;
+            val = val >> 1;
+            if old_carry {
+                val |= 0b10000000
+            }
+            self.memory[hl as usize] = val;
+            (old_bit_0, val)
         }
         else {
-            self.unset_z_flag();
-        }
-        if (self.cpu.a & 0b00000001 != 0)
-        {
-            self.set_c_flag();
-        }
-        else{
-            self.unset_c_flag();
-        }
+            let curr_reg = self.get_reg(reg.chars().next().unwrap());
+            let old_bit_0 = *curr_reg & 0b00000001;
+            *curr_reg = (*curr_reg) >> 1;
+            if old_carry {
+                *curr_reg |= 0b10000000
+            }
+            (old_bit_0, *curr_reg)
+        };
+
+    self.set_flags(if val == 0 {'y'} else {'n'}, 'n', 'n', if old_bit_0 != 0 {'y'} else {'n'} );
     }
 
-    fn rrca(&mut self) {
-        self.cpu.a = self.cpu.a.rotate_right(1);
-        self.unset_n_flag();
-        self.unset_h_flag();
-        if (self.cpu.a == 0)
-        {
-            self.set_z_flag();
+    //shift
+
+    fn sla_r(&mut self, reg: &str) {
+        let (bit_7, val) = if reg == "hl" {
+            let hl = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+            let mut val = self.memory[hl as usize];
+            let bit_7 = val & 0b10000000;
+            val = (val) << 1;
+            self.memory[hl as usize] = val;
+            (bit_7, val)
         }
         else {
-            self.unset_z_flag();
-        }
-        if (self.cpu.a & 0b10000000 != 0)
-        {
-            self.set_c_flag();
-        }
-        else{
-            self.unset_c_flag();
-        }
+            let curr_reg = self.get_reg(reg.chars().next().unwrap());
+            let bit_7 = *curr_reg & 0b10000000;
+            *curr_reg = (*curr_reg) << 1;
+            let val = *curr_reg;
+            (bit_7, val)
+        };
+         
+        self.set_flags(if val == 0 {'y'} else {'n'}, 'n', 'n', if bit_7 != 0 {'y'} else {'n'})
     }
 
-    fn rla(&mut self) {
-        let old_carry = self.c_flag_bool();
-        let old_bit_7 = (self.cpu.a & 0b10000000) != 0;
-        self.cpu.a = self.cpu.a << 1;
-        if old_carry {
-            self.cpu.a |= 0b00000001;  
+    fn sra_r(&mut self, reg: &str) {
+        let (bit_0, val) = if reg == "hl" { 
+            let hl = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+            let mut val = self.memory[hl as usize];
+            let bit_7 = val & 0b10000000;
+            let bit_0 = val & 0b00000001;
+            val = val >> 1;
+            val |= bit_7;
+            self.memory[hl as usize] = val;
+            (bit_0, val)
         }
-        if old_bit_7 {
-            self.set_c_flag();
-        } else {
-         self.unset_c_flag();
-        }
-        if self.cpu.a == 0 {
-            self.set_z_flag();
-        } else {
-            self.unset_z_flag();
+        else {
+            let curr_reg = self.get_reg(reg.chars().next().unwrap());
+            let bit_7 = *curr_reg & 0b10000000;
+            let bit_0 = *curr_reg & 0b00000001;
+            *curr_reg = (*curr_reg) >> 1;
+            *curr_reg |= bit_7;
+            let val = *curr_reg;
+            (bit_0, val)
+        };
+        self.set_flags(if val == 0 {'y'} else {'n'}, 'n', 'n', if bit_0 != 0 {'y'} else {'n'})
+    }
 
+    fn srl_r(&mut self, reg: &str) {
+        let (bit_0, val) = if reg == "hl"
+            {
+                let hl = (self.cpu.h as u16) << 8 | self.cpu.l as u16;
+                let mut val = self.memory[hl as usize];
+                let bit_0 = val & 0b10000000;
+                val = (val) >> 1;
+                self.memory[hl as usize] = val; 
+                (bit_0, val)
             }
-        self.unset_n_flag();
-        self.unset_h_flag();
+        else {
+            let curr_reg = self.get_reg(reg.chars().next().unwrap());
+            let bit_0 = *curr_reg & 0b00000001;
+            *curr_reg = (*curr_reg) >> 1;
+            let val = *curr_reg;
+            (bit_0, val)
+        };
+        self.set_flags(if val == 0 {'y'} else {'n'}, 'n', 'n', if bit_0 != 0 {'y'} else {'n'})
     }
 
-    fn rra(&mut self) {
-        let old_carry = self.c_flag_bool();
-        let old_bit_0 = (self.cpu.a & 0b00000001) != 0;
-        self.cpu.a = self.cpu.a >> 1;
-        if old_carry {
-            self.cpu.a |= 0b10000000;  
-        }
-        if old_bit_0 {
-            self.set_c_flag();
-        } else {
-         self.unset_c_flag();
-        }
-        if self.cpu.a == 0 {
-            self.set_z_flag();
-        } else {
-            self.unset_z_flag();
-
-            }
-        self.unset_n_flag();
-        self.unset_h_flag();
-    }
 
     // call
 
@@ -564,7 +688,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let old_value = *curr_reg;
         *curr_reg  = curr_reg.wrapping_add(1);
         let result = *curr_reg;
-        drop(curr_reg);
+         
         if result == 0 {
             self.set_z_flag();
         }
@@ -617,7 +741,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let old_value = *curr_reg;
         *curr_reg  = curr_reg.wrapping_sub(1);
         let result = *curr_reg;
-        drop(curr_reg);
+         
         if result == 0 {
             self.set_z_flag();
         }
@@ -726,7 +850,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         self.set_h_flag();
         let curr_reg = self.get_reg(reg);
         let val = *curr_reg;
-        drop(curr_reg);
+         
         let mask = 1 << bit;
         if (val & mask == 0)
         {
@@ -814,7 +938,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let total_byte = (self.cpu.h as u16) << 8 | (self.cpu.l as u16);
         let curr_reg = self.get_reg(reg);
         let val = *curr_reg;
-        drop(curr_reg);
+         
         self.memory[total_byte as usize] = val;
     }   
 
@@ -847,7 +971,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
             "sp" => {
                 let low_byte = self.fetch_byte();
                 let high_byte = self.fetch_byte();
-                let total_byte = (high_byte as u16 << 8 | low_byte as u16);
+                let total_byte = ((high_byte as u16) << 8 | low_byte as u16);
                 self.cpu.sp = total_byte;
             }
             _ => unimplemented!("fail")
@@ -935,7 +1059,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let old_value = self.cpu.a;
         let curr_reg = self.get_reg(reg);
         let val = *curr_reg;
-        drop(curr_reg);
+         
         let (result, overflow) = self.cpu.a.overflowing_add(val);
         self.cpu.a = result;
         self.unset_n_flag();
@@ -1023,7 +1147,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let old_value = self.cpu.a;
         let curr_reg = self.get_reg(reg);
         let val = *curr_reg;
-        drop(curr_reg);
+         
         let (result1, overflow1) = self.cpu.a.overflowing_add(val);
         let (result, overflow2) = result1.overflowing_add(self.c_flag_bool() as u8);
         let overflow = (overflow1 || overflow2);
@@ -1120,7 +1244,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let old_value = self.cpu.a;
         let curr_reg = self.get_reg(reg);
         let val = *curr_reg;
-        drop(curr_reg);
+         
         let (result, overflow) = self.cpu.a.overflowing_sub(val);
         self.cpu.a = result;
         self.set_n_flag();
@@ -1208,7 +1332,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let old_value = self.cpu.a;
         let curr_reg = self.get_reg(reg);
         let val = *curr_reg;
-        drop(curr_reg);
+         
         let (result1, overflow1) = self.cpu.a.overflowing_sub(val);
         let (result, overflow2) = result1.overflowing_sub(self.c_flag_bool() as u8);
         let overflow = overflow1 || overflow2;
@@ -1303,7 +1427,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
     fn xor_r(&mut self, reg: char){
         let curr_reg = self.get_reg(reg);
         let val = *curr_reg;
-        drop(curr_reg);
+         
         self.cpu.a = self.cpu.a ^ val;
         if self.cpu.a == 0 {
             self.set_z_flag();
@@ -1348,7 +1472,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
     fn or_r(&mut self, reg: char){
         let curr_reg = self.get_reg(reg);
         let val = *curr_reg;
-        drop(curr_reg);
+         
         self.cpu.a = self.cpu.a | val;
         if self.cpu.a == 0 {
             self.set_z_flag();
@@ -1395,7 +1519,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let old_value = self.cpu.a;
         let curr_reg = self.get_reg(reg);
         let curr = *curr_reg;
-        drop(curr_reg);
+         
         let (result, overflow) = self.cpu.a.overflowing_sub(curr);
         if result == 0 {
             self.set_z_flag();
@@ -1444,30 +1568,6 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         }
     }
 
-   fn cp_r_n(&mut self) {
-        let old_value = self.cpu.a;
-        let val = self.fetch_byte();
-        let (result, overflow) = self.cpu.a.overflowing_sub(val);
-        if result == 0 {
-            self.set_z_flag();
-        }
-        else {
-            self.unset_z_flag();
-        }
-        self.set_n_flag();
-        if (old_value & 0x0F) < (val & 0x0F) {
-            self.set_h_flag();
-        }
-        else {
-            self.unset_h_flag();
-        }
-        if overflow {
-            self.set_c_flag();
-        }
-        else {
-            self.unset_c_flag();
-        }
-    }
     
 }
 
