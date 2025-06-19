@@ -1,3 +1,4 @@
+use minifb::{Key, Window, WindowOptions};
 const ZERO_FLAG: u8 = 0b10000000;
 const CARRY_FLAG: u8 = 0b00010000;
 // just make a blanket flag resetter function when you can pass ignore in for flags you dont touch lol.
@@ -29,6 +30,7 @@ pub struct Cpu {
 pub struct Gameboy {
     pub cpu: Cpu,
     pub memory: [u8; 65536],
+    pub frame_buffer: [u32; 160 * 144],
 }
 
 impl Gameboy {
@@ -62,6 +64,16 @@ impl Gameboy {
                 self.memory[i] = byte;
             }
         }
+    }
+
+    fn set_pixel(&mut self, x: usize, y: usize, color: u32) {
+        if x < 160 && y < 144 {
+            self.frame_buffer[y * 160 + x] = color;
+        }
+    }
+
+    pub fn get_frame_buffer(&self) -> &[u32] {
+        &self.frame_buffer
     }
 
 fn execute_opcode(&mut self, opcode: u8){
