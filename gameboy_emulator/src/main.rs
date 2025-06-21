@@ -12,7 +12,7 @@ fn main() {
         memory: [0; 65536],
         frame_buffer: [0; (160 * 144)],
     };
-    let rom_data = std::fs::read(r"C:\Users\Isaac\OneDrive\Desktop\gameboygames\tetris.gb").expect("failed to read rom file");
+    let rom_data = std::fs::read(r"C:\Users\Isaac\OneDrive\Desktop\gameboygames\cpu_instrs.gb").expect("failed to read rom file");
     
     let mut window = Window::new(
         "gameboy emulator",

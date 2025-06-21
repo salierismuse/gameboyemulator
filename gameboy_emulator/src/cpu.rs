@@ -1576,7 +1576,7 @@ fn execute_cb_opcode(&mut self, opcode: u8){
         let old_value = self.cpu.a;
         let cmp_val = self.fetch_byte();
         let (result, overflow) = self.cpu.a.overflowing_sub(cmp_val);   
-        self.set_flags(if result == 0 {'y'} else {'n'}, if (old_value & 0x0F) < (cmp_val & 0x0f) {'y'} else {'n'}, if (old_value * 0x0F) < (cmp_val & 0x0F) {'y'} else {'n'}, if overflow {'y'} else {'n'})
+        self.set_flags(if result == 0 {'y'} else {'n'}, if (old_value & 0x0F) < (cmp_val & 0x0f) {'y'} else {'n'}, if (old_value & 0x0F) < (cmp_val & 0x0F) {'y'} else {'n'}, if overflow {'y'} else {'n'})
     }
 
     fn cp_r_n(&mut self, reg: char) {
